@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user profile and safety preferences stored per authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the owner." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "indianPhoneNumber": { "type": "string", "description": "Optional Indian mobile number for local personalization." },
+        "preferredLanguage": { "type": "string", "enum": ["en", "hi", "mr"], "description": "Preferred UI and AI response language." },
+        "callScreeningEnabled": { "type": "boolean", "description": "Whether the user enabled call screening guidance." },
+        "privacyMinimizeStorage": { "type": "boolean", "description": "Whether sensitive previews should be redacted before saving scan history." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of profile creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update." }
+      },
+      "required": ["userId", "displayName", "preferredLanguage", "callScreeningEnabled", "privacyMinimizeStorage", "createdAt", "updatedAt"]
+    },
+    "ScanRecord": {
+      "title": "ScanRecord",
+      "description": "User-owned scam analysis scan history item.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the owner." },
+        "scanType": {
+          "type": "string",
+          "enum": ["MESSAGE", "SCREENSHOT", "LINK", "CALL", "PHONE", "EMAIL", "UPI", "JOB", "IMPERSONATION"],
+          "description": "Scanner module used."
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": ["SAFE_LOOKING", "CAUTION", "HIGH_RISK", "CRITICAL_RISK"],
+          "description": "Risk classification."
+        },
+        "riskScore": { "type": "integer", "description": "Risk score 0 to 100." },
+        "scamCategory": { "type": "string", "description": "Detected scam category." },
+        "summary": { "type": "string", "description": "Short summary of the scan result." },
+        "inputPreview": { "type": "string", "description": "Truncated or privacy-redacted snippet of scanned content." },
+        "explanation": { "type": "string", "description": "Plain-language explanation." },
+        "indicators": { "type": "string", "description": "List of suspicious phrases or indicators." },
+        "recommendedActions": { "type": "string", "description": "List of recommended next steps." },
+        "detectedUrls": { "type": "string", "description": "List of suspicious URLs found." },
+        "language": { "type": "string", "enum": ["en", "hi", "mr"], "description": "Language of the analysis." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of scan creation." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update." }
+      },
+      "required": ["userId", "scanType", "riskLevel", "riskScore", "scamCategory", "summary", "explanation", "indicators", "recommendedActions", "detectedUrls", "language", "createdAt", "updatedAt"]
+    },
+    "CommunityReport": {
+      "title": "CommunityReport",
+      "description": "User-submitted unverified scam report for community awareness and phone/link lookup.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the submitting user." },
+        "category": {
+          "type": "string",
+          "enum": ["SMS_SCAM", "WHATSAPP_SCAM", "SCAM_CALL", "PHISHING_LINK", "UPI_FRAUD", "FAKE_JOB", "IMPERSONATION", "FAKE_EMAIL"],
+          "description": "Category of reported scam."
+        },
+        "description": { "type": "string", "description": "Sanitized description of the scam attempt without personal PII." },
+        "reportedTarget": { "type": "string", "description": "Normalized phone number, domain/URL, or scam handle if applicable." },
+        "incidentDate": { "type": "string", "description": "User-entered date of incident (YYYY-MM-DD)." },
+        "moderationStatus": { "type": "string", "enum": ["published", "hidden"], "description": "Visibility status." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of report submission." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update." }
+      },
+      "required": ["userId", "category", "description", "incidentDate", "moderationStatus", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile and preferences document."
+    },
+    "/users/{userId}/scanHistory/{scanId}": {
+      "schema": { "$ref": "#/entities/ScanRecord" },
+      "description": "User-owned history of completed scam scans."
+    },
+    "/communityReports/{reportId}": {
+      "schema": { "$ref": "#/entities/CommunityReport" },
+      "description": "Community-submitted scam reports for India fraud trends and number/link checks."
+    }
+  }
+}

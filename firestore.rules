@@ -1,0 +1,156 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Deny all reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidLanguage(lang) {
+      return lang in ['en', 'hi', 'mr'];
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             (!('indianPhoneNumber' in data) || (data.indianPhoneNumber is string && data.indianPhoneNumber.size() <= 16)) &&
+             data.preferredLanguage is string && isValidLanguage(data.preferredLanguage) &&
+             data.callScreeningEnabled is bool &&
+             data.privacyMinimizeStorage is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidScanType(t) {
+      return t in ['MESSAGE', 'SCREENSHOT', 'LINK', 'CALL', 'PHONE', 'EMAIL', 'UPI', 'JOB', 'IMPERSONATION'];
+    }
+
+    function isValidRiskLevel(r) {
+      return r in ['SAFE_LOOKING', 'CAUTION', 'HIGH_RISK', 'CRITICAL_RISK'];
+    }
+
+    function isValidStringList(arr, maxCount, maxItemLen) {
+      return arr is list &&
+             arr.size() <= maxCount &&
+             (arr.size() == 0 || (arr[0] is string && arr[0].size() <= maxItemLen));
+    }
+
+    function isValidScanRecord(data, userId) {
+      return data.userId is string && data.userId == userId &&
+             data.scanType is string && isValidScanType(data.scanType) &&
+             data.riskLevel is string && isValidRiskLevel(data.riskLevel) &&
+             data.riskScore is int && data.riskScore >= 0 && data.riskScore <= 100 &&
+             data.scamCategory is string && data.scamCategory.size() >= 1 && data.scamCategory.size() <= 100 &&
+             data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 400 &&
+             (!('inputPreview' in data) || (data.inputPreview is string && data.inputPreview.size() <= 240)) &&
+             data.explanation is string && data.explanation.size() >= 1 && data.explanation.size() <= 1500 &&
+             isValidStringList(data.indicators, 10, 200) &&
+             isValidStringList(data.recommendedActions, 10, 240) &&
+             isValidStringList(data.detectedUrls, 10, 300) &&
+             data.language is string && isValidLanguage(data.language) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidReportCategory(c) {
+      return c in ['SMS_SCAM', 'WHATSAPP_SCAM', 'SCAM_CALL', 'PHISHING_LINK', 'UPI_FRAUD', 'FAKE_JOB', 'IMPERSONATION', 'FAKE_EMAIL'];
+    }
+
+    function isValidCommunityReport(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.category is string && isValidReportCategory(data.category) &&
+             data.description is string && data.description.size() >= 10 && data.description.size() <= 600 &&
+             (!('reportedTarget' in data) || (data.reportedTarget is string && data.reportedTarget.size() <= 160)) &&
+             data.incidentDate is string && data.incidentDate.size() >= 4 && data.incidentDate.size() <= 20 &&
+             data.moderationStatus is string && data.moderationStatus in ['published', 'hidden'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // 1. User Profile (Strictly private PII isolation)
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'preferredLanguage', 'callScreeningEnabled', 'privacyMinimizeStorage', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'indianPhoneNumber', 'preferredLanguage', 'callScreeningEnabled', 'privacyMinimizeStorage', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'indianPhoneNumber', 'preferredLanguage', 'callScreeningEnabled', 'privacyMinimizeStorage', 'updatedAt']);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // 2. Scan History subcollection (Strictly owner-scoped)
+      match /scanHistory/{scanId} {
+        allow get: if isOwner(userId) && isValidId(scanId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(scanId) &&
+                         incoming().keys().hasAll(['userId', 'scanType', 'riskLevel', 'riskScore', 'scamCategory', 'summary', 'explanation', 'indicators', 'recommendedActions', 'detectedUrls', 'language', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'scanType', 'riskLevel', 'riskScore', 'scamCategory', 'summary', 'inputPreview', 'explanation', 'indicators', 'recommendedActions', 'detectedUrls', 'language', 'createdAt', 'updatedAt']) &&
+                         isValidScanRecord(incoming(), userId);
+
+        allow update: if false;
+
+        allow delete: if isOwner(userId) && isValidId(scanId);
+      }
+    }
+
+    // 3. Community Scam Reports (Sanitized, no reporter PII, owner-editable/deletable)
+    match /communityReports/{reportId} {
+      allow get: if isSignedIn() && isValidId(reportId) &&
+                    (existing().userId == request.auth.uid || existing().moderationStatus == 'published');
+
+      allow list: if isSignedIn() &&
+                     (existing().userId == request.auth.uid || existing().moderationStatus == 'published');
+
+      allow create: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().moderationStatus == 'published' &&
+                       incoming().keys().hasAll(['userId', 'category', 'description', 'incidentDate', 'moderationStatus', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'category', 'description', 'reportedTarget', 'incidentDate', 'moderationStatus', 'createdAt', 'updatedAt']) &&
+                       isValidCommunityReport(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(reportId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidCommunityReport(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['category', 'description', 'reportedTarget', 'incidentDate', 'moderationStatus', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(reportId) && existing().userId == request.auth.uid;
+    }
+  }
+}

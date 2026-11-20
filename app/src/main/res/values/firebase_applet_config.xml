@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<resources>
+    <string name="firestore_database_id" translatable="false">ai-studio-android-scamshie-934ad8dd-bb88-4691-8212-afb2555213b8</string>
+    <string name="recaptcha_site_key" translatable="false">6LdWRCouAAAAAH55Zi6cmm1MPmUBZgmYTQ3eYk7M</string>
+</resources>
